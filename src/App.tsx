@@ -11,6 +11,8 @@ import Dashboard from './pages/Dashboard';
 import Leads from './pages/leads/Leads';
 import Products from './pages/products/Products';
 import Customers from './pages/customers/Customers';
+import ScanProduct from './pages/products/ScanProduct';
+import Analytics from './pages/analytics/Analytics';
 
 const queryClient = new QueryClient();
 
@@ -23,12 +25,14 @@ function App() {
             <Routes>
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
+              <Route path="/scan" element={<ScanProduct />} />
               <Route path="/" element={<Layout />}>
                 <Route index element={<Navigate to="/dashboard" replace />} />
                 <Route path="dashboard" element={<Dashboard />} />
                 <Route path="leads" element={<Leads />} />
                 <Route path="products" element={<Products />} />
                 <Route path="customers" element={<Customers />} />
+                <Route path="analytics" element={<Analytics />} />
               </Route>
             </Routes>
           </BrowserRouter>

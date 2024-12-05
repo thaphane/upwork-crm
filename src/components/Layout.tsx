@@ -24,6 +24,7 @@ import {
   Inventory as InventoryIcon,
   ExitToApp as LogoutIcon,
   ChevronLeft as ChevronLeftIcon,
+  Analytics as AnalyticsIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -48,6 +49,7 @@ export default function Layout() {
     { text: 'Leads', icon: <PersonIcon />, path: '/leads' },
     { text: 'Customers', icon: <PeopleIcon />, path: '/customers' },
     { text: 'Products', icon: <InventoryIcon />, path: '/products' },
+    { text: 'Analytics', icon: <AnalyticsIcon />, path: '/analytics' },
   ];
 
   const drawer = (
