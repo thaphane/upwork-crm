@@ -8,18 +8,16 @@ import {
   DialogContent,
   DialogActions,
   TextField,
-  IconButton,
-  Typography,
-  Tooltip,
-  Alert,
   CircularProgress,
   Grid,
+  Tooltip,
+  IconButton,
 } from '@mui/material';
 import {
   Add as AddIcon,
-  QrCode as QrCodeIcon,
   Upload as UploadIcon,
   Download as DownloadIcon,
+  QrCode as QrCodeIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
 import DataTable from '../../components/DataTable';
@@ -109,8 +107,8 @@ export default function Products() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
-      await axios.delete(`http://localhost:5000/api/products/${id}`, {
+    mutationFn: async (_id: string) => {
+      await axios.delete(`http://localhost:5000/api/products/${_id}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
       });
     },
@@ -120,16 +118,16 @@ export default function Products() {
   });
 
   const generateQRMutation = useMutation({
-    mutationFn: async (id: string) => {
+    mutationFn: async (_id: string) => {
       const response = await axios.get(
-        `http://localhost:5000/api/products/${id}/qr`,
+        `http://localhost:5000/api/products/${_id}/qr`,
         {
           headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
         }
       );
       return response.data;
     },
-    onSuccess: (data, id) => {
+    onSuccess: (data, _id) => {
       queryClient.invalidateQueries({ queryKey: ['products'] });
       // Open QR code in new window
       const win = window.open('', '_blank');
@@ -272,12 +270,12 @@ export default function Products() {
 
       <DataTable
         columns={columns}
-        rows={products || []}
+        rows={products ?? []}
         onEdit={handleOpen}
         onDelete={(row) => deleteMutation.mutate(row._id)}
         page={0}
         rowsPerPage={10}
-        totalRows={products?.length || 0}
+        totalRows={products?.length ?? 0}
         onPageChange={() => {}}
         onRowsPerPageChange={() => {}}
       />

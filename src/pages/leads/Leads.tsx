@@ -8,8 +8,8 @@ import {
   DialogContent,
   DialogActions,
   TextField,
-  IconButton,
-  Typography,
+  IconButton as _IconButton,
+  Typography as _Typography,
   Grid,
   ToggleButton,
   ToggleButtonGroup,
@@ -215,12 +215,12 @@ export default function Leads() {
       {viewMode === 'table' ? (
         <DataTable
           columns={columns}
-          rows={leads || []}
+          rows={leads ?? []}
           onEdit={handleOpen}
           onDelete={(row) => deleteMutation.mutate(row._id)}
           page={0}
           rowsPerPage={10}
-          totalRows={leads?.length || 0}
+          totalRows={leads?.length ?? 0}
           onPageChange={() => {}}
           onRowsPerPageChange={() => {}}
         />

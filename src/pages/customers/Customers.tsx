@@ -8,22 +8,19 @@ import {
   DialogContent,
   DialogActions,
   TextField,
+  Grid,
   IconButton,
   Typography,
-  Grid,
-  Paper,
-  Tooltip,
   CircularProgress,
-  Collapse,
+  Tooltip,
   Card,
   CardContent,
 } from '@mui/material';
 import {
   Add as AddIcon,
-  Edit as EditIcon,
-  Delete as DeleteIcon,
+  Edit as _EditIcon,
+  Delete as _DeleteIcon,
   Note as NoteIcon,
-  Close as CloseIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
 import DataTable from '../../components/DataTable';
@@ -79,7 +76,6 @@ export default function Customers() {
       postalCode: '',
     },
   });
-
   const queryClient = useQueryClient();
 
   const { data: customers, isLoading } = useQuery<Customer[]>({
@@ -260,12 +256,12 @@ export default function Customers() {
 
       <DataTable
         columns={columns}
-        rows={customers || []}
+        rows={customers ?? []}
         onEdit={handleOpen}
         onDelete={(row) => deleteMutation.mutate(row._id)}
         page={0}
         rowsPerPage={10}
-        totalRows={customers?.length || 0}
+        totalRows={customers?.length ?? 0}
         onPageChange={() => {}}
         onRowsPerPageChange={() => {}}
       />

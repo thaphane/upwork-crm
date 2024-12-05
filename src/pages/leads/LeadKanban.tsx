@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
 import {
   Box,
@@ -35,11 +35,17 @@ interface LeadKanbanProps {
   onDelete: (lead: Lead) => void;
 }
 
+interface ColumnType {
+  New: Lead[];
+  InProgress: Lead[];
+  Converted: Lead[];
+}
+
 const statusColumns = [
   { id: 'New', title: 'New Leads' },
   { id: 'InProgress', title: 'In Progress' },
   { id: 'Converted', title: 'Converted' },
-];
+] as const;
 
 export default function LeadKanban({
   leads,
@@ -47,8 +53,25 @@ export default function LeadKanban({
   onEdit,
   onDelete,
 }: LeadKanbanProps) {
-  const getLeadsByStatus = (status: string) => {
-    return leads.filter((lead) => lead.status === status);
+  const [columns, setColumns] = useState<ColumnType>({
+    New: [],
+    InProgress: [],
+    Converted: [],
+  });
+
+  useEffect(() => {
+    if (leads) {
+      const newColumns: ColumnType = {
+        New: leads.filter(lead => lead.status === 'New'),
+        InProgress: leads.filter(lead => lead.status === 'InProgress'),
+        Converted: leads.filter(lead => lead.status === 'Converted'),
+      };
+      setColumns(newColumns);
+    }
+  }, [leads]);
+
+  const getLeadsByStatus = (status: keyof ColumnType): Lead[] => {
+    return columns[status];
   };
 
   return (
@@ -87,7 +110,7 @@ export default function LeadKanban({
                   {...provided.droppableProps}
                   sx={{ p: 1, minHeight: 100 }}
                 >
-                  {getLeadsByStatus(column.id).map((lead, index) => (
+                  {getLeadsByStatus(column.id as keyof ColumnType).map((lead: Lead, index: number) => (
                     <Draggable
                       key={lead._id}
                       draggableId={lead._id}

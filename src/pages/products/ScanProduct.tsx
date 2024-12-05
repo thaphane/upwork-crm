@@ -1,23 +1,7 @@
 import React, { useState } from 'react';
-import {
-  Box,
-  Card,
-  CardContent,
-  Typography,
-  Alert,
-  IconButton,
-  Collapse,
-  Grid,
-  Paper,
-} from '@mui/material';
-import {
-  Close as CloseIcon,
-  LocalOffer as PriceIcon,
-  Category as CategoryIcon,
-  Inventory as InventoryIcon,
-} from '@mui/icons-material';
-import axios from 'axios';
+import { Box, Typography } from '@mui/material';
 import QRScanner from './QRScanner';
+import axios from 'axios';
 
 interface Location {
   latitude: number;
@@ -90,79 +74,50 @@ export default function ScanProduct() {
 
   return (
     <Box sx={{ p: 3 }}>
-      <Grid container spacing={3}>
-        <Grid item xs={12} md={6}>
-          <Paper elevation={3} sx={{ p: 2 }}>
-            <Typography variant="h6" gutterBottom>
-              Scan Product QR Code
+      <Typography variant="h6" gutterBottom>
+        Scan Product QR Code
+      </Typography>
+      <QRScanner onScan={handleScan} onError={handleError} />
+      {error && (
+        <Typography variant="body1" color="error">
+          {error}
+        </Typography>
+      )}
+      {scannedProduct && (
+        <Box sx={{ mt: 2 }}>
+          <Typography variant="h5" gutterBottom>
+            {scannedProduct.name}
+          </Typography>
+          <Typography variant="body2" paragraph>
+            {scannedProduct.description}
+          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+            <Typography variant="body1" sx={{ mr: 1 }}>
+              Price: ${scannedProduct.price.toFixed(2)}
             </Typography>
-            <QRScanner onScan={handleScan} onError={handleError} />
-          </Paper>
-        </Grid>
-        <Grid item xs={12} md={6}>
-          <Collapse in={Boolean(error)}>
-            <Alert
-              severity="error"
-              action={
-                <IconButton
-                  aria-label="close"
-                  color="inherit"
-                  size="small"
-                  onClick={() => setError('')}
-                >
-                  <CloseIcon fontSize="inherit" />
-                </IconButton>
-              }
-              sx={{ mb: 2 }}
-            >
-              {error}
-            </Alert>
-          </Collapse>
-
-          {scannedProduct && (
-            <Card>
-              <CardContent>
-                <Typography variant="h5" gutterBottom>
-                  {scannedProduct.name}
-                </Typography>
-                <Typography
-                  variant="body2"
-                  color="text.secondary"
-                  paragraph
-                >
-                  {scannedProduct.description}
-                </Typography>
-                <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                  <PriceIcon sx={{ mr: 1 }} color="primary" />
-                  <Typography>
-                    Price: ${scannedProduct.price.toFixed(2)}
-                  </Typography>
-                </Box>
-                <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                  <CategoryIcon sx={{ mr: 1 }} color="primary" />
-                  <Typography>Category: {scannedProduct.category}</Typography>
-                </Box>
-                <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                  <InventoryIcon sx={{ mr: 1 }} color="primary" />
-                  <Typography>
-                    Inventory: {scannedProduct.inventory} units
-                  </Typography>
-                </Box>
-                {location && (
-                  <Box sx={{ mt: 2 }}>
-                    <Typography variant="caption" display="block">
-                      Scanned at: {new Date().toLocaleString()}
-                    </Typography>
-                    <Typography variant="caption" display="block">
-                      Location: {location.latitude}, {location.longitude}
-                    </Typography>
-                  </Box>
-                )}
-              </CardContent>
-            </Card>
+          </Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+            <Typography variant="body1" sx={{ mr: 1 }}>
+              Category: {scannedProduct.category}
+            </Typography>
+          </Box>
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <Typography variant="body1" sx={{ mr: 1 }}>
+              Inventory: {scannedProduct.inventory} units
+            </Typography>
+          </Box>
+          {location && (
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="caption" display="block">
+                Scanned at: {new Date().toLocaleString()}
+              </Typography>
+              <Typography variant="caption" display="block">
+                Location: {location.latitude}, {location.longitude}
+              </Typography>
+            </Box>
           )}
-        </Grid>
-      </Grid>
+        </Box>
+      )}
     </Box>
   );
 }

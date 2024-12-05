@@ -1,7 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Box, Button, Typography, CircularProgress } from '@mui/material';
-import { useMutation } from '@tanstack/react-query';
-import axios from 'axios';
+import { Box, Button, Typography } from '@mui/material';
 // @ts-ignore
 import jsQR from 'jsqr';
 
