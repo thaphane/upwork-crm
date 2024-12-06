@@ -47,10 +47,14 @@ install_nginx() {
     echo "Installing and configuring Nginx..."
     apt-get install -y nginx
 
-    # Create web root directory
+    # Create web root directory with proper permissions
+    echo "Setting up web root directory..."
     mkdir -p /var/www/crm/frontend
+    
+    # Ensure proper ownership and permissions
     chown -R www-data:www-data /var/www/crm
-    chmod -R 755 /var/www/crm
+    find /var/www/crm -type d -exec chmod 755 {} \;
+    find /var/www/crm -type f -exec chmod 644 {} \;
 
     # Create Nginx configuration
     cat > /etc/nginx/sites-available/crm << 'EOL'
@@ -65,8 +69,22 @@ server {
 
     # Frontend static files
     location / {
-        try_files $uri $uri/ /index.html;
+        try_files $uri $uri/ /index.html =404;
         add_header Cache-Control "no-cache, must-revalidate";
+    }
+
+    # Handle favicon.ico
+    location = /favicon.ico {
+        access_log off;
+        log_not_found off;
+        alias /var/www/crm/frontend/favicon.ico;
+    }
+
+    # Handle robots.txt
+    location = /robots.txt {
+        access_log off;
+        log_not_found off;
+        alias /var/www/crm/frontend/robots.txt;
     }
 
     # Backend API
@@ -85,6 +103,11 @@ server {
         proxy_connect_timeout 1800;
         proxy_send_timeout 1800;
         client_max_body_size 50M;
+
+        # Error handling
+        proxy_intercept_errors on;
+        error_page 404 =404 /404.html;
+        error_page 500 502 503 504 =500 /500.html;
     }
 
     # Additional security headers
@@ -92,13 +115,66 @@ server {
     add_header X-XSS-Protection "1; mode=block" always;
     add_header X-Content-Type-Options "nosniff" always;
     add_header Referrer-Policy "no-referrer-when-downgrade" always;
-    add_header Content-Security-Policy "default-src 'self' http: https: data: blob: 'unsafe-inline'" always;
+    add_header Content-Security-Policy "default-src 'self' http: https: data: blob: 'unsafe-inline' 'unsafe-eval'" always;
+
+    # Error pages
+    error_page 404 /404.html;
+    error_page 500 502 503 504 /500.html;
+    location = /404.html {
+        internal;
+    }
+    location = /500.html {
+        internal;
+    }
 }
 EOL
 
     # Enable the site and remove default
     ln -sf /etc/nginx/sites-available/crm /etc/nginx/sites-enabled/
     rm -f /etc/nginx/sites-enabled/default
+
+    # Create error pages
+    mkdir -p /var/www/crm/frontend
+    
+    # Create 404 page
+    cat > /var/www/crm/frontend/404.html << 'EOL'
+<!DOCTYPE html>
+<html>
+<head>
+    <title>404 - Page Not Found</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
+        h1 { color: #333; }
+    </style>
+</head>
+<body>
+    <h1>404 - Page Not Found</h1>
+    <p>The page you are looking for does not exist.</p>
+</body>
+</html>
+EOL
+
+    # Create 500 page
+    cat > /var/www/crm/frontend/500.html << 'EOL'
+<!DOCTYPE html>
+<html>
+<head>
+    <title>500 - Server Error</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
+        h1 { color: #333; }
+    </style>
+</head>
+<body>
+    <h1>500 - Server Error</h1>
+    <p>Something went wrong. Please try again later.</p>
+</body>
+</html>
+EOL
+
+    # Set proper permissions for error pages
+    chown www-data:www-data /var/www/crm/frontend/404.html /var/www/crm/frontend/500.html
+    chmod 644 /var/www/crm/frontend/404.html /var/www/crm/frontend/500.html
 
     # Test and restart Nginx
     nginx -t && systemctl restart nginx
@@ -146,9 +222,14 @@ deploy_application() {
 
     # Copy frontend build to Nginx directory
     echo "Copying frontend build to Nginx directory..."
+    rm -rf /var/www/crm/frontend/*
     cp -r build/* /var/www/crm/frontend/
+
+    # Ensure proper permissions after copying
+    find /var/www/crm -type d -exec chmod 755 {} \;
+    find /var/www/crm -type f -exec chmod 644 {} \;
     chown -R www-data:www-data /var/www/crm
-    chmod -R 755 /var/www/crm
+    
     cd ..
 
     # Create PM2 ecosystem file
@@ -244,6 +325,14 @@ verify_deployment() {
     # Check permissions
     echo "Checking web root permissions..."
     ls -la /var/www/crm/frontend
+    
+    # Verify Nginx configuration
+    echo "Verifying Nginx configuration..."
+    nginx -t
+    
+    # Test static file serving
+    echo "Testing static file serving..."
+    curl -I http://localhost/index.html
 }
 
 # Main deployment process
