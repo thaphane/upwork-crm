@@ -17,7 +17,13 @@ const port = process.env.PORT || 5000;
 
 // Middleware
 app.use(cors({
-  origin: 'http://localhost:3000',
+  origin: [
+    'http://localhost:3000',
+    'http://localhost',
+    'http://127.0.0.1',
+    'http://34.29.135.119',
+    'http://your-domain.com'  // Add your domain when you have one
+  ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
@@ -25,20 +31,33 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/leads', leadRoutes);
-app.use('/api/products', productRoutes);
-app.use('/api/dashboard', dashboardRoutes);
+// Logging middleware
+app.use((req: Request, res: Response, next: NextFunction) => {
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+  next();
+});
 
-// Basic route
+// Health check endpoint (root level)
+app.get('/health', (req: Request, res: Response) => {
+  console.log('Health check endpoint called');
+  res.json({ status: 'ok', message: 'Server is running' });
+});
+
+// Basic route (root level)
 app.get('/', (req: Request, res: Response) => {
+  console.log('Root endpoint called');
   res.json({ message: 'Welcome to CRM & Product Management API' });
 });
 
+// API routes
+app.use('/auth', authRoutes);
+app.use('/leads', leadRoutes);
+app.use('/products', productRoutes);
+app.use('/dashboard', dashboardRoutes);
+
 // Error handling middleware
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
-  console.error(err.stack);
+  console.error('Error:', err.stack);
   res.status(500).json({
     error: 'Internal Server Error',
     message: process.env.NODE_ENV === 'development' ? err.message : undefined
@@ -47,6 +66,7 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
 
 // Handle 404
 app.use((req: Request, res: Response) => {
+  console.log('404 Not Found:', req.method, req.url);
   res.status(404).json({ error: 'Route not found' });
 });
 
@@ -57,8 +77,16 @@ mongoose.connect(MONGODB_URI)
   .then(() => {
     console.log('Connected to MongoDB');
     // Start server only after successful database connection
-    app.listen(port, () => {
-      console.log(`Server is running on port ${port}`);
+    const serverPort = typeof port === 'string' ? parseInt(port, 10) : port;
+    app.listen(serverPort, '0.0.0.0', () => {  // Listen on all network interfaces
+      console.log(`Server is running on port ${serverPort}`);
+      console.log('Available routes:');
+      console.log('- GET /health');
+      console.log('- GET /');
+      console.log('- /auth/*');
+      console.log('- /leads/*');
+      console.log('- /products/*');
+      console.log('- /dashboard/*');
     });
   })
   .catch((error) => {
