@@ -64,6 +64,7 @@ install_nginx() {
 
     # Create Nginx configuration
     cat > /etc/nginx/sites-available/crm << 'EOL'
+# Default server configuration
 server {
     listen 80 default_server;
     listen [::]:80 default_server;
@@ -71,14 +72,42 @@ server {
     root /var/www/crm/frontend;
     index index.html;
 
+    # Server name (replace with your domain if available)
     server_name _;
+
+    # Disable server tokens
+    server_tokens off;
 
     # Frontend static files
     location / {
         try_files $uri $uri/ /index.html;
+        add_header Cache-Control "no-store, no-cache, must-revalidate";
+        
+        # Security headers
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header X-XSS-Protection "1; mode=block" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        
+        # CSP with necessary permissions for React app
+        add_header Content-Security-Policy "
+            default-src 'self';
+            script-src 'self' 'unsafe-inline' 'unsafe-eval';
+            style-src 'self' 'unsafe-inline';
+            img-src 'self' data: blob:;
+            font-src 'self' data:;
+            connect-src 'self' http://localhost:5000 http://127.0.0.1:5000 ws: wss:;
+            frame-src 'self';
+            media-src 'self';
+            object-src 'none';
+            base-uri 'self';
+            form-action 'self';
+            frame-ancestors 'self';
+            upgrade-insecure-requests;
+        " always;
     }
 
-    # Backend API
+    # Backend API proxy
     location /api {
         proxy_pass http://127.0.0.1:5000;
         proxy_http_version 1.1;
@@ -89,25 +118,95 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # Timeouts
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+
+        # Response buffering
         proxy_buffering off;
-        proxy_read_timeout 1800;
-        proxy_connect_timeout 1800;
-        proxy_send_timeout 1800;
+        proxy_request_buffering off;
+        
+        # Max body size
         client_max_body_size 50M;
     }
 
-    # Additional security headers
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header X-XSS-Protection "1; mode=block" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header Referrer-Policy "no-referrer-when-downgrade" always;
-    add_header Content-Security-Policy "default-src 'self' http: https: data: blob: 'unsafe-inline' 'unsafe-eval'" always;
+    # Handle static files
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+        expires 30d;
+        add_header Cache-Control "public, no-transform";
+    }
+
+    # Deny access to hidden files
+    location ~ /\. {
+        deny all;
+        access_log off;
+        log_not_found off;
+    }
+
+    # Custom error pages
+    error_page 404 /index.html;
+    error_page 500 502 503 504 /index.html;
+
+    # Logging configuration
+    access_log /var/log/nginx/crm-access.log combined buffer=512k flush=1m;
+    error_log /var/log/nginx/crm-error.log warn;
 }
 EOL
 
     # Enable the site and remove default
     rm -f /etc/nginx/sites-enabled/default
     ln -sf /etc/nginx/sites-available/crm /etc/nginx/sites-enabled/
+
+    # Create Nginx main configuration
+    cat > /etc/nginx/nginx.conf << 'EOL'
+user www-data;
+worker_processes auto;
+pid /run/nginx.pid;
+include /etc/nginx/modules-enabled/*.conf;
+
+events {
+    worker_connections 1024;
+    multi_accept on;
+    use epoll;
+}
+
+http {
+    # Basic Settings
+    sendfile on;
+    tcp_nopush on;
+    tcp_nodelay on;
+    keepalive_timeout 65;
+    types_hash_max_size 2048;
+    server_tokens off;
+
+    # MIME Types
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+
+    # SSL Settings
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers on;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 10m;
+
+    # Logging Settings
+    access_log /var/log/nginx/access.log combined buffer=512k flush=1m;
+    error_log /var/log/nginx/error.log warn;
+
+    # Gzip Settings
+    gzip on;
+    gzip_vary on;
+    gzip_proxied any;
+    gzip_comp_level 6;
+    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
+
+    # Virtual Host Configs
+    include /etc/nginx/conf.d/*.conf;
+    include /etc/nginx/sites-enabled/*;
+}
+EOL
 
     # Verify Nginx configuration
     nginx -t
