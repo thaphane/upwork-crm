@@ -47,14 +47,20 @@ install_nginx() {
     echo "Installing and configuring Nginx..."
     apt-get install -y nginx
 
+    # Stop Nginx before configuration
+    systemctl stop nginx
+
+    # Remove existing web root if it exists
+    rm -rf /var/www/crm
+
     # Create web root directory with proper permissions
     echo "Setting up web root directory..."
     mkdir -p /var/www/crm/frontend
     
-    # Ensure proper ownership and permissions
+    # Set initial permissions
     chown -R www-data:www-data /var/www/crm
-    find /var/www/crm -type d -exec chmod 755 {} \;
-    find /var/www/crm -type f -exec chmod 644 {} \;
+    chmod 755 /var/www/crm
+    chmod 755 /var/www/crm/frontend
 
     # Create Nginx configuration
     cat > /etc/nginx/sites-available/crm << 'EOL'
@@ -69,27 +75,12 @@ server {
 
     # Frontend static files
     location / {
-        try_files $uri $uri/ /index.html =404;
-        add_header Cache-Control "no-cache, must-revalidate";
-    }
-
-    # Handle favicon.ico
-    location = /favicon.ico {
-        access_log off;
-        log_not_found off;
-        alias /var/www/crm/frontend/favicon.ico;
-    }
-
-    # Handle robots.txt
-    location = /robots.txt {
-        access_log off;
-        log_not_found off;
-        alias /var/www/crm/frontend/robots.txt;
+        try_files $uri $uri/ /index.html;
     }
 
     # Backend API
-    location /api/ {
-        proxy_pass http://127.0.0.1:5000/;
+    location /api {
+        proxy_pass http://127.0.0.1:5000;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -103,11 +94,6 @@ server {
         proxy_connect_timeout 1800;
         proxy_send_timeout 1800;
         client_max_body_size 50M;
-
-        # Error handling
-        proxy_intercept_errors on;
-        error_page 404 =404 /404.html;
-        error_page 500 502 503 504 =500 /500.html;
     }
 
     # Additional security headers
@@ -116,68 +102,19 @@ server {
     add_header X-Content-Type-Options "nosniff" always;
     add_header Referrer-Policy "no-referrer-when-downgrade" always;
     add_header Content-Security-Policy "default-src 'self' http: https: data: blob: 'unsafe-inline' 'unsafe-eval'" always;
-
-    # Error pages
-    error_page 404 /404.html;
-    error_page 500 502 503 504 /500.html;
-    location = /404.html {
-        internal;
-    }
-    location = /500.html {
-        internal;
-    }
 }
 EOL
 
     # Enable the site and remove default
-    ln -sf /etc/nginx/sites-available/crm /etc/nginx/sites-enabled/
     rm -f /etc/nginx/sites-enabled/default
+    ln -sf /etc/nginx/sites-available/crm /etc/nginx/sites-enabled/
 
-    # Create error pages
-    mkdir -p /var/www/crm/frontend
-    
-    # Create 404 page
-    cat > /var/www/crm/frontend/404.html << 'EOL'
-<!DOCTYPE html>
-<html>
-<head>
-    <title>404 - Page Not Found</title>
-    <style>
-        body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
-        h1 { color: #333; }
-    </style>
-</head>
-<body>
-    <h1>404 - Page Not Found</h1>
-    <p>The page you are looking for does not exist.</p>
-</body>
-</html>
-EOL
+    # Verify Nginx configuration
+    nginx -t
 
-    # Create 500 page
-    cat > /var/www/crm/frontend/500.html << 'EOL'
-<!DOCTYPE html>
-<html>
-<head>
-    <title>500 - Server Error</title>
-    <style>
-        body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
-        h1 { color: #333; }
-    </style>
-</head>
-<body>
-    <h1>500 - Server Error</h1>
-    <p>Something went wrong. Please try again later.</p>
-</body>
-</html>
-EOL
-
-    # Set proper permissions for error pages
-    chown www-data:www-data /var/www/crm/frontend/404.html /var/www/crm/frontend/500.html
-    chmod 644 /var/www/crm/frontend/404.html /var/www/crm/frontend/500.html
-
-    # Test and restart Nginx
-    nginx -t && systemctl restart nginx
+    # Start Nginx
+    systemctl start nginx
+    systemctl enable nginx
 }
 
 # Function to configure production environment
@@ -225,7 +162,8 @@ deploy_application() {
     rm -rf /var/www/crm/frontend/*
     cp -r build/* /var/www/crm/frontend/
 
-    # Ensure proper permissions after copying
+    # Set proper permissions
+    echo "Setting proper permissions..."
     find /var/www/crm -type d -exec chmod 755 {} \;
     find /var/www/crm -type f -exec chmod 644 {} \;
     chown -R www-data:www-data /var/www/crm
@@ -256,8 +194,10 @@ EOL
     # Create logs directory
     mkdir -p logs
 
-    # Start backend with PM2
+    # Stop any running PM2 processes
     pm2 delete all 2>/dev/null || true
+
+    # Start backend with PM2
     pm2 start ecosystem.config.js
 
     # Save PM2 configuration
@@ -268,6 +208,9 @@ EOL
 
     echo "Waiting for services to start..."
     sleep 10
+
+    # Restart Nginx to ensure all changes are applied
+    systemctl restart nginx
 }
 
 # Function to configure firewall
@@ -302,37 +245,27 @@ configure_firewall() {
 verify_deployment() {
     echo "Verifying deployment..."
     
+    # Check directory structure and permissions
+    echo "Checking directory structure and permissions..."
+    ls -la /var/www/crm
+    ls -la /var/www/crm/frontend
+    
     # Check if services are running
     echo "Checking services..."
     pm2 list
-    
-    # Check if Nginx is running
-    echo "Checking Nginx status..."
     systemctl status nginx
-    
-    # Check if MongoDB is running
-    echo "Checking MongoDB status..."
     systemctl status mongod
     
-    # Test backend API
-    echo "Testing backend API..."
-    curl -I http://localhost:5000/api/health
+    # Test endpoints
+    echo "Testing endpoints..."
+    curl -I http://localhost
+    curl -I http://localhost/api/health
     
-    # Check Nginx error logs
-    echo "Checking Nginx error logs..."
+    # Check logs
+    echo "Checking logs..."
     tail -n 50 /var/log/nginx/error.log
-    
-    # Check permissions
-    echo "Checking web root permissions..."
-    ls -la /var/www/crm/frontend
-    
-    # Verify Nginx configuration
-    echo "Verifying Nginx configuration..."
-    nginx -t
-    
-    # Test static file serving
-    echo "Testing static file serving..."
-    curl -I http://localhost/index.html
+    tail -n 50 /var/log/nginx/access.log
+    pm2 logs --lines 50
 }
 
 # Main deployment process
@@ -360,11 +293,11 @@ if [[ $continue_setup =~ ^[Yy]$ ]]; then
         install_mongodb
     fi
 
-    # Install and configure Nginx
-    install_nginx
-
     # Configure environment
     configure_environment
+
+    # Install and configure Nginx
+    install_nginx
 
     # Deploy application
     deploy_application
@@ -380,13 +313,11 @@ if [[ $continue_setup =~ ^[Yy]$ ]]; then
     echo "Frontend: http://your-server-ip"
     echo "Backend API: http://your-server-ip/api"
     echo ""
-    echo "Next steps:"
-    echo "1. Set up SSL/HTTPS using Let's Encrypt"
-    echo "2. Configure your domain name"
-    echo "3. Set up regular backups"
-    echo "4. Monitor the application using: pm2 monit"
-    echo "5. View logs using: pm2 logs"
-    echo "6. Check Nginx logs: tail -f /var/log/nginx/{access,error}.log"
+    echo "To check the deployment:"
+    echo "1. curl -I http://localhost"
+    echo "2. curl -I http://localhost/api/health"
+    echo "3. tail -f /var/log/nginx/error.log"
+    echo "4. pm2 logs"
 else
     echo "Deployment cancelled."
     exit 0
