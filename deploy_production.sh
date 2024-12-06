@@ -36,6 +36,10 @@ install_mongodb() {
     # Start MongoDB
     systemctl start mongod
     systemctl enable mongod
+
+    # Wait for MongoDB to be ready
+    echo "Waiting for MongoDB to start..."
+    sleep 10
 }
 
 # Function to install and configure Nginx
@@ -51,22 +55,38 @@ server {
 
     # Frontend
     location / {
-        proxy_pass http://localhost:3000;
+        proxy_pass http://127.0.0.1:3000;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
         proxy_set_header Host $host;
         proxy_cache_bypass $http_upgrade;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_buffering off;
+        proxy_read_timeout 1800;
+        proxy_connect_timeout 1800;
+        proxy_send_timeout 1800;
+        client_max_body_size 50M;
     }
 
     # Backend API
     location /api {
-        proxy_pass http://localhost:5000;
+        proxy_pass http://127.0.0.1:5000;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
         proxy_set_header Host $host;
         proxy_cache_bypass $http_upgrade;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_buffering off;
+        proxy_read_timeout 1800;
+        proxy_connect_timeout 1800;
+        proxy_send_timeout 1800;
+        client_max_body_size 50M;
     }
 }
 EOL
@@ -74,6 +94,45 @@ EOL
     # Enable the site
     ln -sf /etc/nginx/sites-available/crm /etc/nginx/sites-enabled/
     rm -f /etc/nginx/sites-enabled/default
+
+    # Optimize Nginx configuration
+    cat > /etc/nginx/nginx.conf << 'EOL'
+user www-data;
+worker_processes auto;
+pid /run/nginx.pid;
+include /etc/nginx/modules-enabled/*.conf;
+
+events {
+    worker_connections 1024;
+    multi_accept on;
+}
+
+http {
+    sendfile on;
+    tcp_nopush on;
+    tcp_nodelay on;
+    keepalive_timeout 65;
+    types_hash_max_size 2048;
+
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+
+    access_log /var/log/nginx/access.log;
+    error_log /var/log/nginx/error.log;
+
+    gzip on;
+    gzip_disable "msie6";
+    gzip_vary on;
+    gzip_proxied any;
+    gzip_comp_level 6;
+    gzip_buffers 16 8k;
+    gzip_http_version 1.1;
+    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
+
+    include /etc/nginx/conf.d/*.conf;
+    include /etc/nginx/sites-enabled/*;
+}
+EOL
 
     # Test and restart Nginx
     nginx -t
@@ -98,7 +157,7 @@ EOL
     # Create frontend .env file
     cat > frontend/.env << EOL
 PORT=3000
-REACT_APP_API_URL=http://localhost:5000
+REACT_APP_API_URL=/api
 EOL
 
     echo "Environment files created."
@@ -121,19 +180,62 @@ deploy_application() {
     npm run build
     cd ..
 
-    # Start backend with PM2
-    pm2 start dist/server.js --name "crm-backend"
+    # Create PM2 ecosystem file
+    cat > ecosystem.config.js << 'EOL'
+module.exports = {
+  apps: [
+    {
+      name: 'crm-backend',
+      script: 'dist/server.js',
+      instances: 'max',
+      exec_mode: 'cluster',
+      env: {
+        NODE_ENV: 'production',
+        PORT: 5000
+      },
+      max_memory_restart: '1G',
+      error_file: 'logs/backend-err.log',
+      out_file: 'logs/backend-out.log',
+      merge_logs: true,
+      log_date_format: 'YYYY-MM-DD HH:mm:ss'
+    },
+    {
+      name: 'crm-frontend',
+      script: 'serve',
+      args: '-s frontend/build -l 3000',
+      instances: 1,
+      env: {
+        PM2_SERVE_PATH: './frontend/build',
+        PM2_SERVE_PORT: 3000,
+        PM2_SERVE_SPA: 'true'
+      },
+      max_memory_restart: '500M',
+      error_file: 'logs/frontend-err.log',
+      out_file: 'logs/frontend-out.log',
+      merge_logs: true,
+      log_date_format: 'YYYY-MM-DD HH:mm:ss'
+    }
+  ]
+};
+EOL
 
-    # Serve frontend with PM2 and serve-static
-    cd frontend
+    # Create logs directory
+    mkdir -p logs
+
+    # Install serve globally
     npm install -g serve
-    pm2 start serve --name "crm-frontend" -- -s build -l 3000
+
+    # Start applications with PM2
+    pm2 start ecosystem.config.js
 
     # Save PM2 configuration
     pm2 save
 
     # Setup PM2 to start on boot
     pm2 startup
+
+    echo "Waiting for services to start..."
+    sleep 10
 }
 
 # Function to configure firewall
@@ -162,6 +264,31 @@ configure_firewall() {
     ufw --force enable
 
     echo "Firewall configured and enabled."
+}
+
+# Function to verify deployment
+verify_deployment() {
+    echo "Verifying deployment..."
+    
+    # Check if services are running
+    echo "Checking services..."
+    pm2 list
+    
+    # Check if Nginx is running
+    echo "Checking Nginx status..."
+    systemctl status nginx
+    
+    # Check if MongoDB is running
+    echo "Checking MongoDB status..."
+    systemctl status mongod
+    
+    # Test backend API
+    echo "Testing backend API..."
+    curl -I http://localhost:5000/api/health
+    
+    # Test frontend
+    echo "Testing frontend..."
+    curl -I http://localhost:3000
 }
 
 # Main deployment process
@@ -201,6 +328,9 @@ if [[ $continue_setup =~ ^[Yy]$ ]]; then
     # Configure firewall
     configure_firewall
 
+    # Verify deployment
+    verify_deployment
+
     echo "Deployment complete!"
     echo "Your CRM application should now be accessible via:"
     echo "Frontend: http://your-server-ip"
@@ -211,6 +341,8 @@ if [[ $continue_setup =~ ^[Yy]$ ]]; then
     echo "2. Configure your domain name"
     echo "3. Set up regular backups"
     echo "4. Monitor the application using: pm2 monit"
+    echo "5. View logs using: pm2 logs"
+    echo "6. Check Nginx logs: tail -f /var/log/nginx/{access,error}.log"
 else
     echo "Deployment cancelled."
     exit 0
