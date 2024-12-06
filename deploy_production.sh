@@ -40,8 +40,15 @@ build_application() {
     # Build frontend
     echo "Building frontend..."
     cd "$project_dir/frontend"
-    sudo -u $ACTUAL_USER npm install
-    sudo -u $ACTUAL_USER npm run build
+    
+    # Clean up any failed installations
+    rm -rf node_modules build
+    
+    # Install frontend dependencies with legacy peer deps
+    sudo -u $ACTUAL_USER npm install --legacy-peer-deps
+    
+    # Build frontend with CI=false to ignore warnings
+    sudo -u $ACTUAL_USER bash -c 'CI=false npm run build'
 
     # Verify the builds
     if [ ! -d "$project_dir/dist" ]; then
@@ -49,8 +56,11 @@ build_application() {
         exit 1
     fi
 
-    if [ ! -f "$project_dir/frontend/build/index.html" ]; then
+    if [ ! -d "$project_dir/frontend/build" ] || [ ! -f "$project_dir/frontend/build/index.html" ]; then
         echo "Frontend build failed!"
+        ls -la "$project_dir/frontend"
+        echo "Contents of frontend directory:"
+        ls -la "$project_dir/frontend/build" || echo "build directory does not exist"
         exit 1
     fi
 }
@@ -66,6 +76,14 @@ deploy_application() {
     # Copy frontend build
     echo "Copying frontend files..."
     rm -rf /var/www/crm/frontend/*
+    
+    # Check if build directory exists and has files
+    if [ ! -d "$project_dir/frontend/build" ] || [ ! "$(ls -A $project_dir/frontend/build)" ]; then
+        echo "Error: Frontend build directory is empty or does not exist!"
+        ls -la "$project_dir/frontend"
+        exit 1
+    fi
+    
     cp -r "$project_dir/frontend/build/"* /var/www/crm/frontend/
 
     # Set proper permissions for web root
@@ -76,6 +94,8 @@ deploy_application() {
     # Verify deployment
     if [ ! -f "/var/www/crm/frontend/index.html" ]; then
         echo "Frontend deployment failed!"
+        echo "Contents of /var/www/crm/frontend:"
+        ls -la /var/www/crm/frontend
         exit 1
     fi
 
