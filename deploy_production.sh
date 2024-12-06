@@ -47,33 +47,31 @@ install_nginx() {
     echo "Installing and configuring Nginx..."
     apt-get install -y nginx
 
-    # Create Nginx configuration for the CRM
+    # Create web root directory
+    mkdir -p /var/www/crm/frontend
+    chown -R www-data:www-data /var/www/crm
+    chmod -R 755 /var/www/crm
+
+    # Create Nginx configuration
     cat > /etc/nginx/sites-available/crm << 'EOL'
 server {
-    listen 80;
-    server_name _;  # Replace with your domain name if available
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    
+    root /var/www/crm/frontend;
+    index index.html;
 
-    # Frontend
+    server_name _;
+
+    # Frontend static files
     location / {
-        proxy_pass http://127.0.0.1:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_cache_bypass $http_upgrade;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_buffering off;
-        proxy_read_timeout 1800;
-        proxy_connect_timeout 1800;
-        proxy_send_timeout 1800;
-        client_max_body_size 50M;
+        try_files $uri $uri/ /index.html;
+        add_header Cache-Control "no-cache, must-revalidate";
     }
 
     # Backend API
-    location /api {
-        proxy_pass http://127.0.0.1:5000;
+    location /api/ {
+        proxy_pass http://127.0.0.1:5000/;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -88,55 +86,22 @@ server {
         proxy_send_timeout 1800;
         client_max_body_size 50M;
     }
+
+    # Additional security headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "no-referrer-when-downgrade" always;
+    add_header Content-Security-Policy "default-src 'self' http: https: data: blob: 'unsafe-inline'" always;
 }
 EOL
 
-    # Enable the site
+    # Enable the site and remove default
     ln -sf /etc/nginx/sites-available/crm /etc/nginx/sites-enabled/
     rm -f /etc/nginx/sites-enabled/default
 
-    # Optimize Nginx configuration
-    cat > /etc/nginx/nginx.conf << 'EOL'
-user www-data;
-worker_processes auto;
-pid /run/nginx.pid;
-include /etc/nginx/modules-enabled/*.conf;
-
-events {
-    worker_connections 1024;
-    multi_accept on;
-}
-
-http {
-    sendfile on;
-    tcp_nopush on;
-    tcp_nodelay on;
-    keepalive_timeout 65;
-    types_hash_max_size 2048;
-
-    include /etc/nginx/mime.types;
-    default_type application/octet-stream;
-
-    access_log /var/log/nginx/access.log;
-    error_log /var/log/nginx/error.log;
-
-    gzip on;
-    gzip_disable "msie6";
-    gzip_vary on;
-    gzip_proxied any;
-    gzip_comp_level 6;
-    gzip_buffers 16 8k;
-    gzip_http_version 1.1;
-    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
-
-    include /etc/nginx/conf.d/*.conf;
-    include /etc/nginx/sites-enabled/*;
-}
-EOL
-
     # Test and restart Nginx
-    nginx -t
-    systemctl restart nginx
+    nginx -t && systemctl restart nginx
 }
 
 # Function to configure production environment
@@ -178,54 +143,40 @@ deploy_application() {
     cd frontend
     npm install
     npm run build
+
+    # Copy frontend build to Nginx directory
+    echo "Copying frontend build to Nginx directory..."
+    cp -r build/* /var/www/crm/frontend/
+    chown -R www-data:www-data /var/www/crm
+    chmod -R 755 /var/www/crm
     cd ..
 
     # Create PM2 ecosystem file
     cat > ecosystem.config.js << 'EOL'
 module.exports = {
-  apps: [
-    {
-      name: 'crm-backend',
-      script: 'dist/server.js',
-      instances: 'max',
-      exec_mode: 'cluster',
-      env: {
-        NODE_ENV: 'production',
-        PORT: 5000
-      },
-      max_memory_restart: '1G',
-      error_file: 'logs/backend-err.log',
-      out_file: 'logs/backend-out.log',
-      merge_logs: true,
-      log_date_format: 'YYYY-MM-DD HH:mm:ss'
+  apps: [{
+    name: 'crm-backend',
+    script: 'dist/server.js',
+    instances: 'max',
+    exec_mode: 'cluster',
+    env: {
+      NODE_ENV: 'production',
+      PORT: 5000
     },
-    {
-      name: 'crm-frontend',
-      script: 'serve',
-      args: '-s frontend/build -l 3000',
-      instances: 1,
-      env: {
-        PM2_SERVE_PATH: './frontend/build',
-        PM2_SERVE_PORT: 3000,
-        PM2_SERVE_SPA: 'true'
-      },
-      max_memory_restart: '500M',
-      error_file: 'logs/frontend-err.log',
-      out_file: 'logs/frontend-out.log',
-      merge_logs: true,
-      log_date_format: 'YYYY-MM-DD HH:mm:ss'
-    }
-  ]
+    max_memory_restart: '1G',
+    error_file: 'logs/backend-err.log',
+    out_file: 'logs/backend-out.log',
+    merge_logs: true,
+    log_date_format: 'YYYY-MM-DD HH:mm:ss'
+  }]
 };
 EOL
 
     # Create logs directory
     mkdir -p logs
 
-    # Install serve globally
-    npm install -g serve
-
-    # Start applications with PM2
+    # Start backend with PM2
+    pm2 delete all 2>/dev/null || true
     pm2 start ecosystem.config.js
 
     # Save PM2 configuration
@@ -286,9 +237,13 @@ verify_deployment() {
     echo "Testing backend API..."
     curl -I http://localhost:5000/api/health
     
-    # Test frontend
-    echo "Testing frontend..."
-    curl -I http://localhost:3000
+    # Check Nginx error logs
+    echo "Checking Nginx error logs..."
+    tail -n 50 /var/log/nginx/error.log
+    
+    # Check permissions
+    echo "Checking web root permissions..."
+    ls -la /var/www/crm/frontend
 }
 
 # Main deployment process
