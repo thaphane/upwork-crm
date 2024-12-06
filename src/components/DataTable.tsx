@@ -35,7 +35,7 @@ interface DataTableProps {
 
 export default function DataTable({
   columns,
-  rows,
+  rows = [],
   onEdit,
   onDelete,
   page,
@@ -44,6 +44,8 @@ export default function DataTable({
   onPageChange,
   onRowsPerPageChange,
 }: DataTableProps) {
+  const safeRows = Array.isArray(rows) ? rows : [];
+
   return (
     <Paper sx={{ width: '100%', overflow: 'hidden' }}>
       <TableContainer sx={{ maxHeight: 440 }}>
@@ -67,7 +69,7 @@ export default function DataTable({
             </TableRow>
           </TableHead>
           <TableBody>
-            {rows.map((row) => {
+            {safeRows.map((row) => {
               return (
                 <TableRow hover role="checkbox" tabIndex={-1} key={row._id}>
                   {columns.map((column) => {

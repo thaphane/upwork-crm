@@ -60,13 +60,19 @@ export default function LeadKanban({
   });
 
   useEffect(() => {
-    if (leads) {
+    if (Array.isArray(leads)) {
       const newColumns: ColumnType = {
         New: leads.filter(lead => lead.status === 'New'),
         InProgress: leads.filter(lead => lead.status === 'InProgress'),
         Converted: leads.filter(lead => lead.status === 'Converted'),
       };
       setColumns(newColumns);
+    } else {
+      setColumns({
+        New: [],
+        InProgress: [],
+        Converted: [],
+      });
     }
   }, [leads]);
 
