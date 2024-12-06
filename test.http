@@ -1,0 +1,48 @@
+### Register a new user
+POST http://localhost:5000/api/auth/register
+Content-Type: application/json
+
+{
+  "email": "test@example.com",
+  "password": "password123",
+  "firstName": "Test",
+  "lastName": "User"
+}
+
+### Login
+POST http://localhost:5000/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "test@example.com",
+  "password": "password123"
+}
+
+### Create a new lead
+POST http://localhost:5000/api/leads
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "name": "John Smith",
+  "email": "john@example.com",
+  "phone": "1234567890",
+  "source": "Website"
+}
+
+### Create a new product
+POST http://localhost:5000/api/products
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "name": "Test Product",
+  "description": "A test product description",
+  "price": 99.99,
+  "category": "Electronics",
+  "inventory": 100
+}
+
+### Generate QR code for product
+GET http://localhost:5000/api/products/{{product_id}}/qr
+Authorization: Bearer {{auth_token}} 
