@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import axios from 'axios';
+import { auth } from '../services/api';
 
 interface AuthContextType {
   isAuthenticated: boolean;
@@ -17,9 +17,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const fetchUserProfile = useCallback(async (token: string) => {
     try {
-      const response = await axios.get('http://localhost:5000/api/auth/profile', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const response = await auth.getProfile();
       setUser(response.data);
     } catch (error) {
       console.error('Error fetching user profile:', error);
@@ -37,10 +35,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = async (email: string, password: string) => {
     try {
-      const response = await axios.post('http://localhost:5000/api/auth/login', {
-        email,
-        password
-      });
+      const response = await auth.login(email, password);
       const { token, user } = response.data;
       localStorage.setItem('token', token);
       setIsAuthenticated(true);
@@ -52,7 +47,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const register = async (userData: any) => {
     try {
-      const response = await axios.post('http://localhost:5000/api/auth/register', userData);
+      const response = await auth.register(userData);
       const { token, user } = response.data;
       localStorage.setItem('token', token);
       setIsAuthenticated(true);
